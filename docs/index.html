@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Content Refresh Opportunity Scoring</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #222;
+            background-color: #ffffff;
+            margin: 0;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 40px 25px 70px 25px;
+        }
+
+        h1 {
+            font-size: 34px;
+            margin-bottom: 8px;
+        }
+
+        h2 {
+            margin-top: 42px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 6px;
+            font-size: 24px;
+        }
+
+        h3 {
+            margin-top: 28px;
+            font-size: 19px;
+        }
+
+        p {
+            margin: 12px 0;
+        }
+
+        .subtitle {
+            color: #555;
+            margin-bottom: 5px;
+        }
+
+        .author {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 35px;
+        }
+
+        .abstract {
+            background-color: #f5f5f5;
+            padding: 18px 20px;
+            border-left: 4px solid #555;
+        }
+
+        img {
+            max-width: 100%;
+            margin: 18px 0 6px 0;
+        }
+
+        .caption {
+            font-size: 14px;
+            color: #666;
+            margin-top: 0;
+            margin-bottom: 25px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            font-size: 15px;
+        }
+
+        th,
+        td {
+            border: 1px solid #ccc;
+            padding: 9px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+        }
+
+        code {
+            background-color: #f3f3f3;
+            padding: 2px 5px;
+        }
+
+        .note {
+            background-color: #fafafa;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin: 20px 0;
+        }
+
+        a {
+            color: #245a9c;
+        }
+
+        footer {
+            margin-top: 55px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+
+
+<body>
+
+<div class="container">
+
+    <h1>Which Content Pages Should Be Reviewed for a Refresh?</h1>
+
+    <p class="subtitle">
+        A page-level refresh opportunity scoring model using search performance data
+    </p>
+
+    <p class="author">
+        Refresh / Content Opportunity Scoring Capstone
+    </p>
+
+
+    <h2>Abstract</h2>
+
+    <div class="abstract">
+        <p>
+            This project looks at whether recent search performance can be used to prioritise
+            content pages for refresh review. I used page-level data from the FlyRank ML
+            Internship warehouse and created monthly observations so that recent performance
+            could be compared with what happened in the following month. I compared a simple
+            trend-based baseline with Logistic Regression and Random Forest using a time-based
+            test period. The Random Forest performed best at the top of the ranking, with a
+            Precision@50 of 78% compared with a 69.2% decline rate in the test set, although
+            its ROC AUC was only 0.571. The final output is a ranked review queue with reason
+            codes that can help editors decide which pages may be worth checking first.
+        </p>
+    </div>
+
+
+    <h2>1. Introduction / Problem</h2>
+
+    <p>
+        The main goal of this project is to decide which content pages should be reviewed
+        first for a possible refresh. Since it is not practical to manually check every
+        page, the project uses recent search performance to rank pages by priority.
+    </p>
+
+    <p>
+        Each observation represents a content page in a particular month. The output is a
+        ranked list with an opportunity score and reason codes showing why a page appears
+        higher in the queue. The ranking is meant to help an editor decide where to look
+        first rather than automatically deciding that a page needs to be changed.
+    </p>
+
+    <p>
+        A wrong recommendation mainly costs editorial time. A page that is not actually a
+        strong refresh opportunity could be reviewed before another page where attention
+        may have been more useful.
+    </p>
+
+
+    <h2>2. Data</h2>
+
+    <p>
+        For the final project I used the FlyRank ML Internship warehouse, mainly the daily
+        content performance table. I aggregated the daily data into monthly page-level
+        observations and used data from December 2025 to June 2026.
+    </p>
+
+    <p>
+        After creating the history and future windows and applying the minimum-impression
+        filter, the modelling dataset contained 291,517 observations from 43 clients and
+        105,697 content pages.
+    </p>
+
+    <p>
+        I only kept rows where Google Search Console data was available and removed pages
+        with fewer than 100 impressions in the observation month because percentage changes
+        can become unstable when the numbers are very small.
+    </p>
+
+    <p>
+        Client and content IDs were used only for grouping and joining and were not included
+        as model features. Future outcome fields and label-derived fields were also excluded.
+        No client names, domains, URLs or raw search queries are included in this paper.
+    </p>
+
+
+    <h2>3. Methodology</h2>
+
+    <p>
+        I treated the task as a prediction and ranking problem. For each page, the model
+        uses recent search performance to estimate whether the page will experience a
+        meaningful decline in the following month.
+    </p>
+
+    <p>
+        I defined a future decline as a drop of at least 20% in impressions compared with
+        the current month. This is only a proxy for pages that may be worth reviewing. It
+        does not mean that every declining page needs a refresh.
+    </p>
+
+    <h3>Features</h3>
+
+    <p>The model used the following features:</p>
+
+    <ul>
+        <li>current impressions</li>
+        <li>current clicks</li>
+        <li>CTR</li>
+        <li>average position</li>
+        <li>days with impressions</li>
+        <li>recent impression change</li>
+        <li>earlier impression change</li>
+        <li>click change</li>
+        <li>CTR change</li>
+        <li>position change</li>
+    </ul>
+
+    <h3>Baseline and models</h3>
+
+    <p>
+        The baseline assumes that pages already losing impressions are more likely to
+        continue declining. Its score is based on recent negative impression change.
+    </p>
+
+    <p>
+        I compared this rule with Logistic Regression and Random Forest. Logistic Regression
+        gives a simpler comparison, while Random Forest can capture more complicated
+        relationships between the features.
+    </p>
+
+    <h3>Validation</h3>
+
+    <p>
+        I used a time-based split instead of randomly mixing observations. Earlier months
+        were used for training, while May 2026 data was used to predict whether pages
+        declined in June 2026.
+    </p>
+
+    <p>
+        The training set contained 203,633 observations and the final test set contained
+        87,884 observations. The training decline rate was 45.4%, while the decline rate
+        in the final test period was 69.2%.
+    </p>
+
+
+    <h2>4. Results</h2>
+
+    <p>
+        The models and baseline were compared using the same test period. Precision@50 was
+        used as the main ranking metric because the practical goal is to identify a small
+        number of pages to inspect first. ROC AUC is also reported to show overall ranking
+        quality.
+    </p>
+
+    <table>
+        <tr>
+            <th>Method</th>
+            <th>Precision@50</th>
+            <th>ROC AUC</th>
+        </tr>
+
+        <tr>
+            <td>Test-set base rate</td>
+            <td>69.2%</td>
+            <td>—</td>
+        </tr>
+
+        <tr>
+            <td>Simple baseline</td>
+            <td>46.0%</td>
+            <td>0.493</td>
+        </tr>
+
+        <tr>
+            <td>Logistic Regression</td>
+            <td>42.0%</td>
+            <td>0.545</td>
+        </tr>
+
+        <tr>
+            <td>Random Forest</td>
+            <td><strong>78.0%</strong></td>
+            <td>0.571</td>
+        </tr>
+    </table>
+
+
+    <img src="images/model_comparison.png" alt="Model comparison chart">
+
+    <p class="caption">
+        Figure 1. Precision@50 for the baseline and two models. The dotted line represents
+        the test-set decline rate.
+    </p>
+
+    <p>
+        The Random Forest performed best for the main ranking metric. Of the 50 pages it
+        ranked as highest risk, 78% experienced the defined decline in the following month.
+    </p>
+
+    <p>
+        However, its ROC AUC was only 0.571. This means the result is more useful for
+        prioritising a small group of pages near the top of the queue than for accurately
+        separating declining and non-declining pages across the full dataset.
+    </p>
+
+
+    <h3>Feature importance</h3>
+
+    <img src="images/feature_importance.png" alt="Random Forest feature importance">
+
+    <p class="caption">
+        Figure 2. Feature importance from the Random Forest model.
+    </p>
+
+    <p>
+        The Random Forest relied most heavily on <code>days_with_impressions</code>. CTR,
+        position change and recent impression change were also among the more important
+        variables.
+    </p>
+
+    <p>
+        I would be careful about treating <code>days_with_impressions</code> as a direct
+        search ranking signal. It may capture useful information about how consistently a
+        page appears in search, but it could also partly reflect differences in data
+        coverage or time periods.
+    </p>
+
+
+    <h3>Changes across time</h3>
+
+    <img src="images/decline_by_month.png" alt="Future decline rate by month">
+
+    <p class="caption">
+        Figure 3. Percentage of pages experiencing the defined decline in the following month.
+    </p>
+
+    <p>
+        The decline rate changed noticeably across the observation months. It was around
+        19.6% for February observations, around 55% for March and April, and 69.2% for May
+        observations predicting June.
+    </p>
+
+    <p>
+        This suggests that the prediction problem was not equally distributed across time
+        and is one reason the final model results should be interpreted cautiously.
+    </p>
+
+
+    <h2>5. Limitations & Honest Framing</h2>
+
+    <p>
+        There are several limitations to this analysis. First, the model predicts a future
+        drop in impressions rather than directly predicting whether a page needs a refresh.
+        A decline can happen for many reasons other than content quality.
+    </p>
+
+    <p>
+        Changes in search demand, competition, seasonality or search result layouts could
+        affect impressions. The model also does not show that refreshing a page will improve
+        its performance.
+    </p>
+
+    <p>
+        The later test period also had a much higher decline rate than the earlier training
+        period. This suggests that the May-to-June period behaved differently from some of
+        the earlier months.
+    </p>
+
+    <p>
+        Finally, the Random Forest's ROC AUC was relatively low. I therefore treat the model
+        mainly as a way to prioritise a small review queue rather than as a strong classifier
+        for every page.
+    </p>
+
+
+    <h2>6. Ranked Recommendations</h2>
+
+    <p>
+        I turned the Random Forest output into a final opportunity score. The score combines
+        70% model decline risk with 30% current search visibility. These weights were chosen
+        as a simple prioritisation rule and were not learned by the model.
+    </p>
+
+    <p>
+        Pages near the top of the ranking are assigned higher review priority. I also add
+        reason codes so an editor can understand why a page was moved higher in the queue.
+    </p>
+
+    <table>
+        <tr>
+            <th>Priority</th>
+            <th>Suggested action</th>
+            <th>What to look for</th>
+        </tr>
+
+        <tr>
+            <td>1</td>
+            <td>Review first</td>
+            <td>
+                High decline risk combined with meaningful search visibility. Check for
+                outdated information, search-intent changes, ranking loss or other obvious
+                content issues.
+            </td>
+        </tr>
+
+        <tr>
+            <td>2</td>
+            <td>Review</td>
+            <td>
+                Pages with some decline or opportunity signals, but less urgency than the
+                highest-ranked group.
+            </td>
+        </tr>
+
+        <tr>
+            <td>3</td>
+            <td>Monitor</td>
+            <td>
+                Pages without enough evidence to justify immediate editorial attention.
+                Continue watching performance before making major changes.
+            </td>
+        </tr>
+    </table>
+
+    <p>
+        Reason codes used in the queue include <strong>high visibility</strong>,
+        <strong>recent impression drop</strong>, <strong>position worsened</strong>,
+        <strong>low CTR</strong>, and <strong>recent recovery</strong>.
+    </p>
+
+    <div class="note">
+        A high opportunity score does not automatically mean a page should be rewritten.
+        The queue is meant to help decide what to inspect first. A person should still
+        review the page and its context before making an editorial decision.
+    </div>
+
+
+    <h2>7. Reproducibility</h2>
+
+    <p>
+        The main analysis is available in the project repository:
+    </p>
+
+    <p>
+        <a href="https://github.com/azka-asif/flyrank-ML">
+            GitHub repository
+        </a>
+    </p>
+
+    <p>
+        The main notebook is located at:
+        <code>work/notebooks/capstone.ipynb</code>.
+    </p>
+
+    <p>
+        The analysis was run in Python using DuckDB, pandas, NumPy, scikit-learn and
+        matplotlib. A fixed random seed of 42 was used for the machine-learning models.
+    </p>
+
+    <p>
+        The warehouse is accessed with a Hugging Face read token stored as
+        <code>HF_TOKEN</code> in Colab Secrets. The token itself is not included in the
+        notebook or repository.
+    </p>
+
+    <p>
+        The main packages can be installed with:
+    </p>
+
+    <p>
+        <code>
+            pip install duckdb huggingface_hub pandas numpy scikit-learn matplotlib
+        </code>
+    </p>
+
+
+    <h2>8. Acknowledgments & Data Credit</h2>
+
+    <p>
+        Built on the
+        <a href="https://flyrank.ai" target="_blank">
+            FlyRank ML Internship dataset
+        </a>.
+    </p>
+
+
+    <footer>
+        Content Refresh Opportunity Scoring Capstone
+    </footer>
+
+</div>
+
+</body>
+</html>
